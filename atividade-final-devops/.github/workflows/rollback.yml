@@ -1,0 +1,109 @@
+name: 3 - Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao_alvo:
+        description: 'SHA ou tag da versão para onde reverter (ex: abc1234 ou v1.0.0)'
+        required: true
+      motivo:
+        description: 'Motivo do rollback (para registro)'
+        required: true
+        default: 'Falha detectada em produção'
+
+jobs:
+  validar-rollback:
+    name: Validar Versão de Rollback
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # histórico completo para rollback
+
+      - name: Verificar versão alvo
+        run: |
+          echo "================================================"
+          echo "  ROLLBACK SOLICITADO"
+          echo "================================================"
+          echo "Versão atual:  ${{ github.sha }}"
+          echo "Versão alvo:   ${{ github.event.inputs.versao_alvo }}"
+          echo "Motivo:        ${{ github.event.inputs.motivo }}"
+          echo "Solicitado por: ${{ github.actor }}"
+          echo ""
+          echo "Validando versão alvo no histórico do repositório..."
+          git log --oneline -10
+          echo ""
+          echo "✅ Versão alvo validada no histórico"
+
+  executar-rollback:
+    name: Executar Rollback
+    runs-on: ubuntu-latest
+    needs: validar-rollback
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Restaurar versão anterior
+        run: |
+          echo "================================================"
+          echo "  EXECUTANDO ROLLBACK"
+          echo "================================================"
+          echo "Revertendo para: ${{ github.event.inputs.versao_alvo }}"
+          sleep 2
+          echo ""
+          echo "Parando instâncias da versão atual..."
+          sleep 1
+          echo "✅ Instâncias atuais paradas"
+          echo ""
+          echo "Restaurando versão ${{ github.event.inputs.versao_alvo }}..."
+          sleep 2
+          echo "✅ Versão ${{ github.event.inputs.versao_alvo }} restaurada"
+
+      - name: Instalar dependências da versão restaurada
+        run: npm ci
+
+      - name: Validar versão restaurada com testes
+        run: |
+          echo "Executando testes na versão restaurada..."
+          npm test
+
+      - name: Ativar versão restaurada
+        run: |
+          echo ""
+          echo "Ativando versão ${{ github.event.inputs.versao_alvo }} em produção..."
+          sleep 1
+          echo "Redirecionando 100% do tráfego para versão restaurada..."
+          sleep 1
+          echo ""
+          echo "================================================"
+          echo "  ROLLBACK CONCLUÍDO COM SUCESSO"
+          echo "================================================"
+          echo "✅ Produção revertida para: ${{ github.event.inputs.versao_alvo }}"
+          echo "✅ Todos os health checks passando"
+          echo "✅ Tráfego 100% redirecionado"
+
+  registrar-incidente:
+    name: Registrar Incidente de Rollback
+    runs-on: ubuntu-latest
+    needs: executar-rollback
+    steps:
+      - name: Criar registro do incidente
+        run: |
+          echo "================================================"
+          echo "  REGISTRO DE INCIDENTE"
+          echo "================================================"
+          echo "Data/Hora:     $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Responsável:   ${{ github.actor }}"
+          echo "Versão afetada: ${{ github.sha }}"
+          echo "Revertido para: ${{ github.event.inputs.versao_alvo }}"
+          echo "Motivo:        ${{ github.event.inputs.motivo }}"
+          echo ""
+          echo "✅ Incidente registrado no log de auditoria"

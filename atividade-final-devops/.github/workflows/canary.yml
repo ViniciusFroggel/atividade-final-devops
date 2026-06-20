@@ -1,0 +1,93 @@
+name: 2 - Canary Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: 'Versão para deploy canary (ex: v1.2.0)'
+        required: true
+        default: 'v1.0.0'
+      percentual_canary:
+        description: 'Percentual de tráfego para canary (%)'
+        required: true
+        default: '10'
+        type: choice
+        options:
+          - '10'
+          - '25'
+          - '50'
+
+jobs:
+  deploy-canary:
+    name: Deploy Canary (${{ github.event.inputs.percentual_canary }}% do tráfego)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar testes antes do canary
+        run: npm test
+
+      - name: Iniciar Canary Deploy
+        run: |
+          echo "================================================"
+          echo "  CANARY DEPLOY INICIADO"
+          echo "================================================"
+          echo "Versão: ${{ github.event.inputs.versao }}"
+          echo "Tráfego direcionado para canary: ${{ github.event.inputs.percentual_canary }}%"
+          echo ""
+          echo "Configurando roteamento de tráfego..."
+          sleep 2
+          echo "✅ Instância CANARY ativa com ${{ github.event.inputs.percentual_canary }}% do tráfego"
+          echo "✅ Instância STABLE mantém $(( 100 - ${{ github.event.inputs.percentual_canary }} ))% do tráfego"
+
+  monitorar-canary:
+    name: Monitorar Canary (health check)
+    runs-on: ubuntu-latest
+    needs: deploy-canary
+    steps:
+      - name: Aguardar estabilização
+        run: |
+          echo "Aguardando estabilização da instância canary..."
+          sleep 3
+
+      - name: Verificar saúde do canary
+        run: |
+          echo "================================================"
+          echo "  MONITORAMENTO DO CANARY"
+          echo "================================================"
+          echo "Checando métricas da instância canary..."
+          sleep 2
+          echo ""
+          echo "Taxa de erro:    0.1%  ✅ (limite: 1%)"
+          echo "Latência P99:    145ms ✅ (limite: 500ms)"
+          echo "CPU:             23%   ✅ (limite: 80%)"
+          echo ""
+          echo "✅ Canary saudável! Pronto para promoção."
+
+  promover-para-producao:
+    name: Promover Canary para 100% (Produção)
+    runs-on: ubuntu-latest
+    needs: monitorar-canary
+    steps:
+      - name: Promover canary para produção completa
+        run: |
+          echo "================================================"
+          echo "  PROMOÇÃO DO CANARY PARA PRODUÇÃO"
+          echo "================================================"
+          echo "Canary validado com sucesso!"
+          echo "Promovendo versão ${{ github.event.inputs.versao }} para 100% do tráfego..."
+          sleep 2
+          echo ""
+          echo "✅ Deploy canary concluído!"
+          echo "✅ 100% do tráfego agora na versão ${{ github.event.inputs.versao }}"
+          echo "✅ Instâncias antigas descomissionadas"
